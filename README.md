@@ -54,7 +54,7 @@ bun run build
 
 Tip: opening `dist/index.html` via `file://` may be blocked by browser CORS; serving it (preview/static server) is more reliable.
 
-For this fork's dev-first workflow, persistent panel mounts, manual production promotion,
+For this fork's main-branch workflow, persistent panel mounts, one-command deployment,
 and rollback commands, see the [server operations guide (Chinese)](README_CN.md#本-fork-的开发与发布流程).
 
 ## Connecting to the server

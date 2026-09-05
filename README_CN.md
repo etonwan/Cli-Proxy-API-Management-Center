@@ -56,77 +56,53 @@ bun run build
 
 ## 本 Fork 的开发与发布流程
 
-UI 在 `dev` 分支开发，验收后通过 PR 合并到 `main`。上游更新也先进入 `dev`，不要直接覆盖生产版本。UI 和后端分别发布；修改页面通常不需要重建后端。
+日常流程：**在 `main` 修改 → 本地预览 → 提交并 push → 一条命令部署 UI**。
+GitHub 用于保存代码，push 不会自动更新面板。单人维护不强制使用 `dev` 分支、PR 或 GitHub Release；较大改动可以临时开分支。UI 和后端独立部署。
 
-### 服务器配置
+### 修改与预览
 
-- UI 仓库：`etonwan/Cli-Proxy-API-Management-Center`。
-- dev 面板：`/www/data/cpa-dev/panel/management.html`；prod 面板：`/www/data/cpa-prod/panel/management.html`。
-- 后端将各自的 `panel` 目录只读挂载到 `/CLIProxyAPI/static`，并设置 `MANAGEMENT_STATIC_PATH=/CLIProxyAPI/static`。
-- 两个环境的 `remote-management` 均设置 `disable-auto-update-panel: true`，`panel-github-repository` 指向本 Fork。
-- 保留其他运行配置和密钥，不要用配置片段覆盖整个配置文件。
-
-首次启用挂载前，必须准备好各自的 `management.html`。文件缺失时，只读挂载会阻止后端自动下载，面板将无法打开；应从备份恢复，而不是重新启用自动更新。首次添加挂载需要重建容器，后续只更新面板文件不需要重启后端。
-
-### 开发与验收
-
-以下命令在服务器的 `/www/projects/CLIProxyAPI/ui` 执行。构建需要 Node.js 24 和 Bun 1.3.14；面板更新脚本需要 Python 3.11+、Linux，以及 `/www/data` 的写入权限。
-
-1. 在 `dev` 分支修改 UI。使用 `bun run dev` 预览时，连接 dev 后端，不要使用生产管理密钥。
-2. 执行检查并构建：
-
-   ```bash
-   bun install --frozen-lockfile
-   python3 -B -m unittest discover -s tests -p 'test_*.py'
-   bun run verify
-   ```
-
-3. 将构建文件安装到 dev：
-
-   ```bash
-   python3 -B scripts/cpa_panel.py install-dev dist/index.html
-   ```
-
-4. 打开 dev 的 `/management.html`，刷新页面并检查登录、配置读取和本次修改涉及的功能。脚本校验文件是否正确提供，但不能代替功能验收。
-
-服务器未安装 Node.js 和 Bun 时，可使用 Docker 执行第 2 步的 UI 检查与构建，不需要在宿主机安装工具。Python 测试仍在宿主机执行：
+在 UI 仓库使用 Node.js 24、Bun 1.3.14 开发：
 
 ```bash
-docker run --rm -v "$PWD:/app" -w /app node:24-bookworm bash -lc \
-  'npm install -g bun@1.3.14 && bun install --frozen-lockfile && bun run verify'
+bun install --frozen-lockfile
+bun run dev
 ```
 
-### 正式发布与生产更新
+打开预览页面，连接 dev 后端，检查本次改动。不要使用生产管理密钥测试写操作。满意后提交本次文件并 push 到本 Fork 的 `main`。不需要每次发布版本标签。
 
-1. 验收后，将 UI 的 `dev` 合并到 `main`。需要发布时，从已合并的 `main` 创建并推送一个未使用的 `v*` 版本标签。现有 GitHub Actions 会检查、构建并发布 `management.html`；推送标签不等于部署。
-2. 下载该 Release 的 `management.html`，再用 `install-dev` 安装并验收一次。不要重新构建另一份文件用于生产。
-3. 查看文件指纹（SHA256，用于确认文件完全一致）：
+### 一条命令部署
 
-   ```bash
-   python3 -B scripts/cpa_panel.py status
-   ```
+在服务器的 `/www/projects/CLIProxyAPI/ui` 执行，需要 Python 3.11+、Git、Docker、网络访问和 `/www/data` 的写入权限：
 
-4. 将已验收的 `dev current` 指纹填入命令；按提示输入 `prod` 确认：
+```bash
+python3 -B scripts/cpa_panel.py deploy
+```
 
-   ```bash
-   python3 -B scripts/cpa_panel.py promote <已验收的SHA256>
-   ```
+命令会检查 `main` 无未提交改动，并获取远端状态、确认与 `origin/main` 一致。它不会自动提交、push 或 pull；若在另一台电脑 push，先在服务器确认工作目录干净，再执行 `git pull --ff-only origin main`。
 
-脚本只复制 dev 正在提供的同一份面板。如果 dev 在验收后改变，脚本拒绝更新 prod。更新前保留上一版，随后完整替换文件并校验本地 HTTP 返回内容；不会修改后端镜像、账户或运行配置。完成后刷新生产页面并检查功能。
+随后自动运行 Python 测试，通过 Docker 中的 Node.js 24 和 Bun 1.3.14 执行依赖安装、UI 测试、代码检查及构建。构建成功后输入 `prod` 确认安装；其他输入取消。无需手动填写文件指纹，也无需将文件先安装到 dev。
+
+部署前保留上一版，然后完整替换生产面板并校验 HTTP 返回内容。UI 版本标识包含源代码提交，便于追溯。不会重启后端或更换后端镜像，也不会修改账户和运行配置。完成后刷新生产页面，检查本次修改的功能。
 
 ### 回退
 
-在需要回退的环境执行：
+生产页面有问题时执行，按提示输入 `prod`：
 
 ```bash
-python3 -B scripts/cpa_panel.py rollback dev
-# 生产回退也需要输入 prod 确认：
 python3 -B scripts/cpa_panel.py rollback prod
 ```
 
-上一版保存在各自数据目录的 `panel-previous.html`。回退会交换当前版和上一版，只保留一个回退位置；更早版本从对应 Release 或备份恢复。首次安装新版本前，没有上一版可回退。重复安装相同内容不会覆盖上一版。
+上一版保存在 `/www/data/cpa-prod/panel-previous.html`。回退会交换当前版和上一版，只保留一个回退位置；更早版本需要从备份恢复或重新构建已知提交。首次更新前可能没有上一版。重复安装相同内容不会覆盖上一版。
 
-如果脚本报告 HTTP 校验失败，面板文件可能已更新。停止后续发布，检查容器挂载和服务状态，必要时回退。脚本不自动回退，也不验证真实模型调用。
+### 可选的 dev 验收与运行配置
+
+需要更完整的验收时，可以执行 `bun run verify`，再用 `python3 -B scripts/cpa_panel.py install-dev dist/index.html` 安装到 dev。这不是生产部署的必经步骤。`status` 命令可查看两个环境的当前和上一版文件指纹。
+
+两个环境分别持久保存 `panel/management.html`，位于 `/www/data/cpa-dev` 和 `/www/data/cpa-prod`。后端将各自的 `panel` 目录只读挂载到 `/CLIProxyAPI/static`，设置 `MANAGEMENT_STATIC_PATH=/CLIProxyAPI/static`、`disable-auto-update-panel: true`，面板来源指向本 Fork，避免自动更新覆盖定制版本。
+
+首次启用挂载前必须准备面板文件。文件缺失时，只读挂载会阻止自动下载，面板将无法打开；应从备份恢复，不要重新启用自动更新。
+
+如果脚本报告 HTTP 校验失败，面板文件可能已更新。检查容器挂载和服务状态，必要时回退。脚本不自动回退；文件校验也不能代替页面功能或真实模型调用测试。
 
 ## 连接说明
 

@@ -1,17 +1,45 @@
-"""Manually install, promote, and roll back the panel on the CPA Linux host."""
+"""Build and deploy the synced UI main branch, or roll back the panel on the CPA Linux host."""
 
 import argparse
 import fcntl
 import hashlib
 import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import urllib.request
 
 
+ROOT = Path(__file__).resolve().parent.parent
 DATA_ROOT = Path("/www/data")
 PORTS = {"dev": 8318, "prod": 8317}
+
+
+def build_panel():
+    def git(*args):
+        return subprocess.check_output(["git", "-C", str(ROOT), *args], text=True).strip()
+
+    if git("branch", "--show-current") != "main" or git("status", "--porcelain"):
+        raise ValueError("Deploy from a clean UI main branch; commit and push changes first")
+    subprocess.run(["git", "fetch", "origin", "main"], cwd=ROOT, check=True)
+    commit = git("rev-parse", "HEAD")
+    if commit != git("rev-parse", "origin/main"):
+        raise ValueError("Local main differs from origin/main; sync it before deploying")
+    print(f"Checking and building UI main at {commit}", flush=True)
+    subprocess.run(
+        [sys.executable, "-B", "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"],
+        cwd=ROOT, check=True,
+    )
+    subprocess.run(
+        ["docker", "run", "--rm", "-v", f"{ROOT}:/app", "-w", "/app",
+         "-e", f"VERSION=main-{commit[:12]}", "node:24-bookworm", "bash", "-lc",
+         "npm install -g bun@1.3.14 && bun install --frozen-lockfile && bun run verify"],
+        cwd=ROOT, check=True,
+    )
+    if git("status", "--porcelain") or git("rev-parse", "HEAD") != commit:
+        raise ValueError("Source changed during the build; nothing was deployed. Run deploy again")
+    return (ROOT / "dist/index.html").read_bytes()
 
 
 def digest(content):
@@ -71,7 +99,7 @@ def main(argv=None):
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("status", help="Show installed and previous panel hashes")
     commands.add_parser("install-dev", help="Install a local build or downloaded release in dev").add_argument("file", type=Path)
-    commands.add_parser("promote", help="Copy the exact accepted dev panel to prod").add_argument("sha256")
+    commands.add_parser("deploy", help="Check and build synced main, then confirm production installation")
     commands.add_parser("rollback", help="Swap the current and previous panel").add_argument("environment", choices=PORTS)
     args = parser.parse_args(argv)
 
@@ -84,11 +112,8 @@ def main(argv=None):
             return
         if args.command == "install-dev":
             environment, content = "dev", args.file.read_bytes()
-        elif args.command == "promote":
-            environment, content = "prod", panel_path("dev").read_bytes()
-            if digest(content) != args.sha256:
-                raise ValueError("Dev has changed since acceptance; test it again and use its current SHA256")
-            verify_served("dev", content)
+        elif args.command == "deploy":
+            environment, content = "prod", build_panel()
         else:
             environment = args.environment
             content = previous_path(environment).read_bytes()
@@ -104,5 +129,5 @@ def main(argv=None):
 if __name__ == "__main__":
     try:
         main()
-    except (OSError, ValueError, EOFError) as error:
+    except (OSError, ValueError, EOFError, subprocess.CalledProcessError) as error:
         sys.exit(str(error))
