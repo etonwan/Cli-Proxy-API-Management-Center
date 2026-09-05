@@ -54,6 +54,80 @@ bun run build
 
 提示：直接用 `file://` 打开 `dist/index.html` 可能遇到浏览器 CORS 限制；更稳妥的方式是用预览/静态服务器打开。
 
+## 本 Fork 的开发与发布流程
+
+UI 在 `dev` 分支开发，验收后通过 PR 合并到 `main`。上游更新也先进入 `dev`，不要直接覆盖生产版本。UI 和后端分别发布；修改页面通常不需要重建后端。
+
+### 服务器配置
+
+- UI 仓库：`etonwan/Cli-Proxy-API-Management-Center`。
+- dev 面板：`/www/data/cpa-dev/panel/management.html`；prod 面板：`/www/data/cpa-prod/panel/management.html`。
+- 后端将各自的 `panel` 目录只读挂载到 `/CLIProxyAPI/static`，并设置 `MANAGEMENT_STATIC_PATH=/CLIProxyAPI/static`。
+- 两个环境的 `remote-management` 均设置 `disable-auto-update-panel: true`，`panel-github-repository` 指向本 Fork。
+- 保留其他运行配置和密钥，不要用配置片段覆盖整个配置文件。
+
+首次启用挂载前，必须准备好各自的 `management.html`。文件缺失时，只读挂载会阻止后端自动下载，面板将无法打开；应从备份恢复，而不是重新启用自动更新。首次添加挂载需要重建容器，后续只更新面板文件不需要重启后端。
+
+### 开发与验收
+
+以下命令在服务器的 `/www/projects/CLIProxyAPI/ui` 执行。构建需要 Node.js 24 和 Bun 1.3.14；面板更新脚本需要 Python 3.11+、Linux，以及 `/www/data` 的写入权限。
+
+1. 在 `dev` 分支修改 UI。使用 `bun run dev` 预览时，连接 dev 后端，不要使用生产管理密钥。
+2. 执行检查并构建：
+
+   ```bash
+   bun install --frozen-lockfile
+   python3 -B -m unittest discover -s tests -p 'test_*.py'
+   bun run verify
+   ```
+
+3. 将构建文件安装到 dev：
+
+   ```bash
+   python3 -B scripts/cpa_panel.py install-dev dist/index.html
+   ```
+
+4. 打开 dev 的 `/management.html`，刷新页面并检查登录、配置读取和本次修改涉及的功能。脚本校验文件是否正确提供，但不能代替功能验收。
+
+服务器未安装 Node.js 和 Bun 时，可使用 Docker 执行第 2 步的 UI 检查与构建，不需要在宿主机安装工具。Python 测试仍在宿主机执行：
+
+```bash
+docker run --rm -v "$PWD:/app" -w /app node:24-bookworm bash -lc \
+  'npm install -g bun@1.3.14 && bun install --frozen-lockfile && bun run verify'
+```
+
+### 正式发布与生产更新
+
+1. 验收后，将 UI 的 `dev` 合并到 `main`。需要发布时，从已合并的 `main` 创建并推送一个未使用的 `v*` 版本标签。现有 GitHub Actions 会检查、构建并发布 `management.html`；推送标签不等于部署。
+2. 下载该 Release 的 `management.html`，再用 `install-dev` 安装并验收一次。不要重新构建另一份文件用于生产。
+3. 查看文件指纹（SHA256，用于确认文件完全一致）：
+
+   ```bash
+   python3 -B scripts/cpa_panel.py status
+   ```
+
+4. 将已验收的 `dev current` 指纹填入命令；按提示输入 `prod` 确认：
+
+   ```bash
+   python3 -B scripts/cpa_panel.py promote <已验收的SHA256>
+   ```
+
+脚本只复制 dev 正在提供的同一份面板。如果 dev 在验收后改变，脚本拒绝更新 prod。更新前保留上一版，随后完整替换文件并校验本地 HTTP 返回内容；不会修改后端镜像、账户或运行配置。完成后刷新生产页面并检查功能。
+
+### 回退
+
+在需要回退的环境执行：
+
+```bash
+python3 -B scripts/cpa_panel.py rollback dev
+# 生产回退也需要输入 prod 确认：
+python3 -B scripts/cpa_panel.py rollback prod
+```
+
+上一版保存在各自数据目录的 `panel-previous.html`。回退会交换当前版和上一版，只保留一个回退位置；更早版本从对应 Release 或备份恢复。首次安装新版本前，没有上一版可回退。重复安装相同内容不会覆盖上一版。
+
+如果脚本报告 HTTP 校验失败，面板文件可能已更新。停止后续发布，检查容器挂载和服务状态，必要时回退。脚本不自动回退，也不验证真实模型调用。
+
 ## 连接说明
 
 ### API 地址怎么填
