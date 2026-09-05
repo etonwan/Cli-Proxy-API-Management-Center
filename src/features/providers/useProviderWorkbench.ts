@@ -453,8 +453,13 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
     // 临时隐藏的赞助商：不排除其协议配置，让各协议分组接管显示（见 sponsorDefinitions.ts）
     const code0QuickAccessRemoved = REMOVED_QUICK_ACCESS_BRANDS.has('code0');
     const claudeApiQuickAccessRemoved = REMOVED_QUICK_ACCESS_BRANDS.has('claudeApi');
-    const fennoAIHidden = TEMPORARILY_HIDDEN_SPONSOR_BRANDS.has('fennoAI');
-    const qiniuCloudHidden = TEMPORARILY_HIDDEN_SPONSOR_BRANDS.has('qiniuCloud');
+    const fennoAIHidden =
+      REMOVED_QUICK_ACCESS_BRANDS.has('fennoAI') ||
+      TEMPORARILY_HIDDEN_SPONSOR_BRANDS.has('fennoAI');
+    const qiniuCloudHidden =
+      REMOVED_QUICK_ACCESS_BRANDS.has('qiniuCloud') ||
+      TEMPORARILY_HIDDEN_SPONSOR_BRANDS.has('qiniuCloud');
+    const infistarQuickAccessRemoved = REMOVED_QUICK_ACCESS_BRANDS.has('infistar');
     const groups: ProviderGroup[] = PROVIDER_BRAND_ORDER.map((brand) => {
       let resources: ProviderResource[] = [];
       switch (brand) {
@@ -465,7 +470,7 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
                 (code0QuickAccessRemoved || !isCode0GeminiProvider(item)) &&
                 (qiniuCloudHidden || !isQiniuCloudGeminiProvider(item)) &&
                 !isLmuAIGeminiProvider(item) &&
-                !isInfistarGeminiProvider(item)
+                (infistarQuickAccessRemoved || !isInfistarGeminiProvider(item))
               ) {
                 out.push(geminiToResource(item, index));
               }
@@ -486,7 +491,7 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
               (fennoAIHidden || !isFennoAICodexProvider(item)) &&
               (qiniuCloudHidden || !isQiniuCloudCodexProvider(item)) &&
               !isLmuAICodexProvider(item) &&
-              !isInfistarCodexProvider(item) &&
+              (infistarQuickAccessRemoved || !isInfistarCodexProvider(item)) &&
               !isKimiCodexProvider(item)
             ) {
               out.push(codexToResource(item, index));
@@ -505,7 +510,7 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
                 (fennoAIHidden || !isFennoAIClaudeProvider(item)) &&
                 (qiniuCloudHidden || !isQiniuCloudClaudeProvider(item)) &&
                 !isLmuAIClaudeProvider(item) &&
-                !isInfistarClaudeProvider(item) &&
+                (infistarQuickAccessRemoved || !isInfistarClaudeProvider(item)) &&
                 !isKimiClaudeProvider(item) &&
                 (claudeApiQuickAccessRemoved || !isClaudeApiProvider(item))
               ) {
@@ -537,7 +542,7 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
                 (code0QuickAccessRemoved || !isCode0OpenAIProvider(item)) &&
                 (qiniuCloudHidden || !isQiniuCloudOpenAIProvider(item)) &&
                 !isLmuAIOpenAIProvider(item) &&
-                !isInfistarOpenAIProvider(item) &&
+                (infistarQuickAccessRemoved || !isInfistarOpenAIProvider(item)) &&
                 !isKimiOpenAIProvider(item)
               ) {
                 out.push(openaiToResource(item, index));

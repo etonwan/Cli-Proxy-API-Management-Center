@@ -293,6 +293,9 @@ export const PROVIDER_DESCRIPTORS: Record<ProviderBrand, ProviderDescriptor> = {
 export const REMOVED_QUICK_ACCESS_BRANDS: ReadonlySet<ProviderBrand> = new Set([
   'claudeApi',
   'code0',
+  'fennoAI',
+  'qiniuCloud',
+  'infistar',
 ]);
 
 export const PROVIDER_BRAND_ORDER: ProviderBrand[] = [
